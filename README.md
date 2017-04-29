@@ -6,6 +6,3 @@ Requirements:
 - numpy
 - OpenCv2
 - PIL
-
-Optional requirement:
-- Watson Visual Recognition Python API
