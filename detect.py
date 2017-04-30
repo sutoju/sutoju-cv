@@ -4,13 +4,12 @@ ROBOT = False
 if len(sys.argv) > 1 and sys.argv[1] == 'robot':
     ROBOT = True
 
-from watson_developer_cloud import VisualRecognitionV3
 if ROBOT:
     from PIL import Image
+
 from naoqi import ALProxy
 import numpy as np
 import cv2
-from keras.models import load_model
 from keras.optimizers import SGD
 from convnetskeras.convnets import preprocess_image_batch, convnet
 import time
@@ -22,7 +21,7 @@ WATSON_KEY = os.environ['WATSON_KEY']
 ENDPOINT_PASS = os.environ['ENDPOINT_PASS']
 
 classes = json.loads(open('./classes.json', 'r').read())
-predefined_classes = [954, 898]
+predefined_classes = [954, 968, 950, 939, 943, 957]
 sgd = SGD(lr=0.1, decay=1e-6, momentum=0.9, nesterov=True)
 model = convnet('alexnet',weights_path="weights/alexnet_weights.h5", heatmap=False)
 model.compile(optimizer=sgd, loss='mse')
@@ -62,9 +61,11 @@ def classify_image(filepath, api_key):
 
     return None
 
-proxy = ALProxy('ALVideoDevice', '192.168.1.19', 9559)
-videoClient = proxy.subscribe('python_client', 2, 11, 5)
+if ROBOT:
+    proxy = ALProxy('ALVideoDevice', '192.168.1.19', 9559)
+    videoClient = proxy.subscribe('python_client', 1, 11, 5)
 tts = ALProxy('ALTextToSpeech', '192.168.1.19', 9559)
+tts.setLanguage('English')
 led = ALProxy('ALLeds', '192.168.1.19', 9559)
 
 def read_item_name(name):
@@ -87,12 +88,13 @@ while (True):
         ret, opencvImage = cap.read()
 
     frame = np.copy(opencvImage)
-    mask = cv2.cvtColor(np.copy(opencvImage), cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(mask,(3,3),0)
-    ret, otsu = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-    im2,contours, hierarchy = cv2.findContours(np.copy(otsu), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    contours = [c for c in np.copy(contours) if cv2.contourArea(c) > 10000]
-    if len(contours) > 0 and TIMEOUT < 1:
+    #mask = cv2.cvtColor(np.copy(opencvImage), cv2.COLOR_BGR2GRAY)
+    #blur = cv2.GaussianBlur(mask,(7,7),0)
+    #ret, otsu = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    #im2,contours, hierarchy = cv2.findContours(np.copy(otsu), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    #contours = [c for c in np.copy(contours) if cv2.contourArea(c) > 10000]
+    if TIMEOUT < 1:
+        ''' 
         cnt = contours[0]
         largest = 0
         for c in contours:
@@ -101,16 +103,18 @@ while (True):
                 cnt = c
         x,y,w,h = cv2.boundingRect(cnt)
         cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
-        cropped = frame[y:y+h,x:x+w]
+       ''' 
+        cropped = np.copy(frame)#[y:y+h,x:x+w]
         frame2 = cv2.resize(cropped, (227,227))
         frame2 = frame2[...,::-1]
         frame2 = np.swapaxes(frame2, 0,2)
         frame2 = np.swapaxes(frame2, 1,2)
         frame2 = np.array([frame2])
         pred = model.predict(frame2)[0]
-        c_id = np.argmax(pred)
-        prob = pred[np.argmax(pred)]
-        if prob > 0.01 and c_id in predefined_classes:
+        prob = [pred[i] for i in predefined_classes]
+        c_id = np.argmax(prob)
+        c_id = predefined_classes[c_id]
+        if pred[c_id] > 0.01:
             print(classes[c_id], prob)
             thread.start_new_thread(rotate_eyes, ())
             thread.start_new_thread(read_item_name, (classes[c_id],))
